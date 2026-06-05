@@ -19,6 +19,20 @@ TIMEZONE = os.environ.get("TIMEZONE", "Europe/Moscow")
 bot = TeleBot(BOT_TOKEN)
 notion = Client(auth=NOTION_TOKEN)
 
+# Auto-detect title field name
+def get_title_field():
+    try:
+        db = notion.databases.retrieve(NOTION_DB_ID)
+        for name, prop in db["properties"].items():
+            if prop["type"] == "title":
+                logger.info(f"Title field found: '{name}'")
+                return name
+    except Exception as e:
+        logger.error(f"Could not retrieve DB schema: {e}")
+    return "Name"
+
+TITLE_FIELD = get_title_field()
+
 user_state = {}
 user_data = {}
 
@@ -190,7 +204,7 @@ def handle_callback(call):
 def save_to_notion(chat_id, uid):
     d = user_data.get(uid, {})
     props = {
-        "Name": {"title": [{"text": {"content": d.get('title', '')}}]},
+        TITLE_FIELD: {"title": [{"text": {"content": d.get('title', '')}}]},
         "Status": {"select": {"name": "Idea"}},
     }
     if d.get('live_date'):
