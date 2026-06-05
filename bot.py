@@ -60,14 +60,19 @@ def skip_kb(prefix):
     return kb
 
 
+def main_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row(types.KeyboardButton("📝 Добавить идею"))
+    kb.row(types.KeyboardButton("📅 На сегодня"))
+    return kb
+
+
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     bot.send_message(message.chat.id,
-        "👋 *Blog Tracker Bot*\n\n"
-        "/new — добавить идею в Notion\n"
-        "/today — что запланировано на сегодня\n"
-        "/cancel — отменить",
-        parse_mode="Markdown"
+        "👋 *Blog Tracker Bot*\n\nНажми кнопку ниже чтобы добавить идею в Notion.",
+        parse_mode="Markdown",
+        reply_markup=main_keyboard()
     )
 
 
@@ -76,7 +81,7 @@ def cmd_cancel(message):
     uid = message.from_user.id
     user_state.pop(uid, None)
     user_data.pop(uid, None)
-    bot.send_message(message.chat.id, "❌ Отменено.")
+    bot.send_message(message.chat.id, "❌ Отменено.", reply_markup=main_keyboard())
 
 
 @bot.message_handler(commands=['new'])
@@ -96,6 +101,16 @@ def cmd_today(message):
 def handle_text(message):
     uid = message.from_user.id
     state = user_state.get(uid)
+
+    if message.text == "📝 Добавить идею":
+        user_state[uid] = 'title'
+        user_data[uid] = {}
+        bot.send_message(message.chat.id, "📝 Название поста:")
+        return
+
+    if message.text == "📅 На сегодня":
+        send_digest(message.chat.id)
+        return
 
     if state == 'title':
         user_data[uid]['title'] = message.text.strip()
@@ -227,10 +242,10 @@ def save_to_notion(chat_id, uid):
             lines.append(f"📅 {d['live_date']}")
         if d.get('platform'):
             lines.append(f"📱 {', '.join(d['platform'])}")
-        bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown")
+        bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown", reply_markup=main_keyboard())
     except Exception as e:
         logger.error(e)
-        bot.send_message(chat_id, f"❌ Ошибка: {e}")
+        bot.send_message(chat_id, f"❌ Ошибка: {e}", reply_markup=main_keyboard())
 
     user_state.pop(uid, None)
     user_data.pop(uid, None)
