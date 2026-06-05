@@ -190,8 +190,8 @@ def handle_callback(call):
 def save_to_notion(chat_id, uid):
     d = user_data.get(uid, {})
     props = {
-        "Title": {"title": [{"text": {"content": d.get('title', '')}}]},
-        "Status": {"status": {"name": "Idea"}},
+        "Name": {"title": [{"text": {"content": d.get('title', '')}}]},
+        "Status": {"select": {"name": "Idea"}},
     }
     if d.get('live_date'):
         props["Live Date"] = {"date": {"start": d['live_date']}}
