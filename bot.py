@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -271,8 +272,19 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_digest(context.bot, update.effective_chat.id)
 
 
-async def scheduled_digest(context: ContextTypes.DEFAULT_TYPE):
-    await send_digest(context.bot, CHAT_ID)
+async def daily_digest_loop(bot):
+    tz = pytz.timezone(TIMEZONE)
+    while True:
+        now = datetime.datetime.now(tz)
+        target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += datetime.timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        await asyncio.sleep(wait_seconds)
+        try:
+            await send_digest(bot, CHAT_ID)
+        except Exception as e:
+            logger.error(f"Digest error: {e}")
 
 
 async def send_digest(bot, chat_id):
@@ -347,10 +359,10 @@ def main():
     app.add_handler(CommandHandler("today", cmd_today))
     app.add_handler(conv)
 
-    # Daily digest at 9:00 AM
-    tz = pytz.timezone(TIMEZONE)
-    notify_time = datetime.time(hour=9, minute=0, tzinfo=tz)
-    app.job_queue.run_daily(scheduled_digest, time=notify_time)
+    async def on_startup(app):
+        asyncio.create_task(daily_digest_loop(app.bot))
+
+    app.post_init = on_startup
 
     logger.info("Bot started")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
