@@ -34,8 +34,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 FORMAT_PLATFORMS = {
-    "Короткий контент": ["Instagram", "ВК", "YouTube", "Tik-tok", "Pinterest", "Дзен"],
-    "Длинный контент": ["YouTube", "ВК"],
+    "Короткий контент": ["Instagram", "VK", "YouTube", "Tik-tok", "Pinterest", "Дзен"],
+    "Длинный контент": ["YouTube", "VK"],
 }
 
 
