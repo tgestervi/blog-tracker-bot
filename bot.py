@@ -20,7 +20,7 @@ import requests
 
 load_dotenv()
 
-TELEGRAM_TOKEN     = os.environ["TELEGRAM_TOKEN"]
+TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 GROQ_API_KEY       = os.environ["GROQ_API_KEY"]
 NOTION_TOKEN       = os.environ["NOTION_TOKEN"]
 NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
