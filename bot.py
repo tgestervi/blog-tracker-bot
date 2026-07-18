@@ -33,16 +33,38 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Форматы -> площадки (без Хайлайтс и Подкаст — они через доп. вопрос)
 FORMAT_PLATFORMS = {
-    "Короткий контент": ["Instagram", "VK", "YouTube", "Tik-tok", "Pinterest", "Дзен"],
-    "Длинный контент": ["YouTube", "VK"],
+    "Короткий ролик 9:16":   ["Instagram", "Tik-tok", "YouTube", "VK", "Дзен"],
+    "Длинное видео 16:9":    ["YouTube", "VK", "Дзен"],
+    "Текстовый пост + фото": ["Instagram", "VK", "Telegram", "Дзен", "YouTube"],
+    "Инфографика=карусель":  ["Instagram", "VK", "Pinterest", "Tik-tok", "Telegram"],
+    "Сторис":                ["Instagram", "VK", "Telegram", "Tik-tok"],
+}
+
+# Форматы, после которых задаём уточняющий вопрос
+EXTRA_QUESTION = {
+    "Длинное видео 16:9": "В формате подкаста?",
+    "Сторис":             "Закрепить как хайлайтс?",
 }
 
 
 def format_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📱 Короткий контент", callback_data="Короткий контент")],
-        [InlineKeyboardButton("🎥 Длинный контент", callback_data="Длинный контент")],
+        [InlineKeyboardButton("🎬 Короткий ролик 9:16",   callback_data="fmt:Короткий ролик 9:16")],
+        [InlineKeyboardButton("🎥 Длинное видео 16:9",    callback_data="fmt:Длинное видео 16:9")],
+        [InlineKeyboardButton("📝 Текстовый пост + фото", callback_data="fmt:Текстовый пост + фото")],
+        [InlineKeyboardButton("📊 Инфографика=карусель",  callback_data="fmt:Инфографика=карусель")],
+        [InlineKeyboardButton("📱 Сторис",                callback_data="fmt:Сторис")],
+    ])
+
+
+def yes_no_keyboard(fmt):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Да", callback_data=f"extra:yes:{fmt}"),
+            InlineKeyboardButton("❌ Нет", callback_data=f"extra:no:{fmt}"),
+        ]
     ])
 
 
@@ -57,7 +79,7 @@ def transcribe(path):
     return result
 
 
-def push_to_notion(title, platforms):
+def push_to_notion(title, formats, platforms):
     headers = {
         "Authorization": "Bearer " + NOTION_TOKEN,
         "Content-Type": "application/json",
@@ -68,6 +90,9 @@ def push_to_notion(title, platforms):
         "properties": {
             "Video Title": {
                 "title": [{"text": {"content": title[:2000]}}]
+            },
+            "Формат": {
+                "multi_select": [{"name": f} for f in formats]
             },
             "Platform": {
                 "multi_select": [{"name": p} for p in platforms]
@@ -96,6 +121,18 @@ def push_to_notion(title, platforms):
     if resp.status_code != 200:
         raise Exception("Notion: " + data.get("message", str(data)))
     return data.get("url", "")
+
+
+async def save_and_reply(query, raw, formats, platforms):
+    """Сохраняет в Notion и редактирует сообщение с результатом."""
+    loop = asyncio.get_event_loop()
+    url = await loop.run_in_executor(None, push_to_notion, raw, formats, platforms)
+    fmt_str = ", ".join(formats)
+    plat_str = ", ".join(platforms)
+    reply = f"Сохранено!\nФормат: {fmt_str}\nПлощадки: {plat_str}"
+    if url:
+        reply += "\n\n" + url
+    await query.edit_message_text(reply)
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -138,18 +175,52 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    fmt = query.data
-    platforms = FORMAT_PLATFORMS.get(fmt, [])
+
+    # Парсим callback_data: "fmt:Короткий ролик 9:16"
+    fmt = query.data[len("fmt:"):]
+    context.user_data["fmt"] = fmt
+
+    if fmt in EXTRA_QUESTION:
+        question = EXTRA_QUESTION[fmt]
+        await query.edit_message_text(
+            f"Формат: {fmt}\n\n{question}",
+            reply_markup=yes_no_keyboard(fmt)
+        )
+    else:
+        await query.edit_message_text("Сохраняю в Notion...")
+        raw = context.user_data.get("raw_idea", "")
+        platforms = FORMAT_PLATFORMS.get(fmt, [])
+        try:
+            await save_and_reply(query, raw, [fmt], platforms)
+        except Exception as e:
+            log.exception("notion error")
+            await query.edit_message_text("Ошибка Notion: " + str(e))
+
+
+async def on_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Парсим callback_data: "extra:yes:Длинное видео 16:9"
+    parts = query.data.split(":", 2)
+    answer = parts[1]   # "yes" или "no"
+    fmt = parts[2]      # основной формат
+
     raw = context.user_data.get("raw_idea", "")
+    platforms = list(FORMAT_PLATFORMS.get(fmt, []))
+    formats = [fmt]
+
+    if answer == "yes":
+        if fmt == "Длинное видео 16:9":
+            formats.append("Подкаст")
+            if "Mave" not in platforms:
+                platforms.append("Mave")
+        elif fmt == "Сторис":
+            formats.append("Хайлайтс")
+
     await query.edit_message_text("Сохраняю в Notion...")
     try:
-        loop = asyncio.get_event_loop()
-        url = await loop.run_in_executor(None, push_to_notion, raw, platforms)
-        platforms_str = ", ".join(platforms)
-        reply = f"Сохранено!\nФормат: {fmt}\nПлощадки: {platforms_str}"
-        if url:
-            reply += "\n\n" + url
-        await query.edit_message_text(reply)
+        await save_and_reply(query, raw, formats, platforms)
     except Exception as e:
         log.exception("notion error")
         await query.edit_message_text("Ошибка Notion: " + str(e))
@@ -160,7 +231,8 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.VOICE, on_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_handler(CallbackQueryHandler(on_format))
+    app.add_handler(CallbackQueryHandler(on_format, pattern=r"^fmt:"))
+    app.add_handler(CallbackQueryHandler(on_extra, pattern=r"^extra:"))
     log.info("Бот запущен...")
     app.run_polling(drop_pending_updates=True)
 
