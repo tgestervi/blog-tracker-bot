@@ -37,8 +37,8 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(format="%(asctime)s  %(levelname)s  %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 
-TASKS_BTN   = "\u{1f4cb} Zadachi na segodnya"
-PUBLISH_BTN = "\u{1f4e2} Publikaciya"
+TASKS_BTN   = "📋 Zadachi na segodnya"
+PUBLISH_BTN = "📢 Publikaciya"
 
 FORMAT_PLATFORMS = {
     "Korotkiy rolik 9:16":   ["Instagram", "Tik-tok", "YouTube", "VK", "Dzen"],
@@ -347,7 +347,7 @@ async def on_publish_mode(update, context):
 
 
 async def on_voice(update, context):
-    msg = await update.message.reply_text("Transkribiruyu...")
+    msg = await update.message.reply_text("Transkribuyu...")
     try:
         voice_file = await context.bot.get_file(update.message.voice.file_id)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
@@ -378,7 +378,7 @@ async def on_text(update, context):
         context.user_data["state"]             = None
         context.user_data["publish_platforms"] = set()
         await update.message.reply_text(
-            "Vyberi platformy dlya publikacii:",
+            "Vyberi platformyi dlya publikacii:",
             reply_markup=publish_platform_keyboard(set()),
         )
         return
@@ -450,7 +450,7 @@ async def on_date(update, context):
     context.user_data["pub_date"] = None if val == "skip" else val
     context.user_data["state"]    = "waiting_reference"
     await query.edit_message_text(
-        "Otprav ssylku na referens ili propuski:",
+        "Otprav ssylku na referens ili propusti:",
         reply_markup=skip_ref_keyboard(),
     )
 
