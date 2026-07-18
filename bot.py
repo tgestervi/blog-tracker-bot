@@ -8,9 +8,10 @@ import os
 import logging
 import tempfile
 import asyncio
+from datetime import date
 from dotenv import load_dotenv
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes
@@ -33,7 +34,9 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# Форматы -> площадки (без Хайлайтс и Подкаст — они через доп. вопрос)
+TASKS_BTN = "📋 Задачи на сегодня"
+
+# Форматы -> площадки
 FORMAT_PLATFORMS = {
     "Короткий ролик 9:16":   ["Instagram", "Tik-tok", "YouTube", "VK", "Дзен"],
     "Длинное видео 16:9":    ["YouTube", "VK", "Дзен"],
@@ -42,11 +45,17 @@ FORMAT_PLATFORMS = {
     "Сторис":                ["Instagram", "VK", "Telegram", "Tik-tok"],
 }
 
-# Форматы, после которых задаём уточняющий вопрос
 EXTRA_QUESTION = {
     "Длинное видео 16:9": "В формате подкаста?",
     "Сторис":             "Закрепить как хайлайтс?",
 }
+
+
+def main_keyboard():
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(TASKS_BTN)]],
+        resize_keyboard=True
+    )
 
 
 def format_keyboard():
@@ -123,8 +132,32 @@ def push_to_notion(title, formats, platforms):
     return data.get("url", "")
 
 
+def get_tasks_today():
+    today = date.today().isoformat()
+    headers = {
+        "Authorization": "Bearer " + NOTION_TOKEN,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "filter": {
+            "property": "Live Date",
+            "date": {"equals": today}
+        },
+        "sorts": [{"property": "Live Date", "direction": "ascending"}]
+    }
+    resp = requests.post(
+        f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
+        headers=headers,
+        json=payload
+    )
+    data = resp.json()
+    if resp.status_code != 200:
+        raise Exception("Notion: " + data.get("message", str(data)))
+    return data.get("results", [])
+
+
 async def save_and_reply(query, raw, formats, platforms):
-    """Сохраняет в Notion и редактирует сообщение с результатом."""
     loop = asyncio.get_event_loop()
     url = await loop.run_in_executor(None, push_to_notion, raw, formats, platforms)
     fmt_str = ", ".join(formats)
@@ -140,8 +173,37 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Привет! Отправь идею для ролика:\n"
         "— голосовым сообщением\n"
         "— или текстом\n\n"
-        "Я сохраню её в Notion со статусом «Идея»."
+        "Я сохраню её в Notion со статусом «Идея».",
+        reply_markup=main_keyboard()
     )
+
+
+async def on_tasks_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Загружаю задачи...")
+    try:
+        loop = asyncio.get_event_loop()
+        pages = await loop.run_in_executor(None, get_tasks_today)
+        if not pages:
+            await update.message.reply_text("На сегодня задач нет 🎉")
+            return
+        lines = [f"📋 Задачи на сегодня ({date.today().strftime('%d.%m')}):\n"]
+        for page in pages:
+            props = page.get("properties", {})
+            title_parts = props.get("Video Title", {}).get("title", [])
+            title = "".join(t.get("plain_text", "") for t in title_parts) or "Без названия"
+            status_obj = props.get("Status", {}).get("select") or {}
+            status = status_obj.get("name", "")
+            url = page.get("url", "")
+            line = f"• {title}"
+            if status:
+                line += f" [{status}]"
+            if url:
+                line += f"\n  {url}"
+            lines.append(line)
+        await update.message.reply_text("\n\n".join(lines))
+    except Exception as e:
+        log.exception("tasks error")
+        await update.message.reply_text("Ошибка: " + str(e))
 
 
 async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,8 +237,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    # Парсим callback_data: "fmt:Короткий ролик 9:16"
     fmt = query.data[len("fmt:"):]
     context.user_data["fmt"] = fmt
 
@@ -200,11 +260,9 @@ async def on_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
-    # Парсим callback_data: "extra:yes:Длинное видео 16:9"
     parts = query.data.split(":", 2)
-    answer = parts[1]   # "yes" или "no"
-    fmt = parts[2]      # основной формат
+    answer = parts[1]
+    fmt = parts[2]
 
     raw = context.user_data.get("raw_idea", "")
     platforms = list(FORMAT_PLATFORMS.get(fmt, []))
@@ -229,6 +287,7 @@ async def on_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(MessageHandler(filters.Text([TASKS_BTN]), on_tasks_today))
     app.add_handler(MessageHandler(filters.VOICE, on_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(CallbackQueryHandler(on_format, pattern=r"^fmt:"))
