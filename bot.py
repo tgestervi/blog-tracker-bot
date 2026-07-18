@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-UGC Ideas Bot - голос/текст -> Notion Blog Tracker
+UGC Ideas Bot - голос/текст -> Notion Blog Tracker + кроспостинг
 """
 
 import os
@@ -25,13 +25,17 @@ TELEGRAM_TOKEN     = os.environ["TELEGRAM_BOT_TOKEN"]
 GROQ_API_KEY       = os.environ["GROQ_API_KEY"]
 NOTION_TOKEN       = os.environ["NOTION_TOKEN"]
 NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
+VK_TOKEN           = os.environ.get("VK_TOKEN", "")
+VK_COMMUNITY       = os.environ.get("VK_COMMUNITY", "")   # screen name, e.g. tg.estervi
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 logging.basicConfig(format="%(asctime)s  %(levelname)s  %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 
-TASKS_BTN = "📋 Задачи на сегодня"
+TASKS_BTN  = "📋 Задачи на сегодня"
+PUBLISH_BTN = "📢 Публикация"
 
 FORMAT_PLATFORMS = {
     "Короткий ролик 9:16":   ["Instagram", "Tik-tok", "YouTube", "VK", "Дзен"],
@@ -51,9 +55,39 @@ EXTRA_QUESTION = {
 
 THEMES = ["Экспертный", "Личный", "Развлекательный"]
 
+# Resolved at startup
+_vk_owner_id: int = 0
+
+
+def _resolve_vk_owner() -> int:
+    """Resolve VK community screen name to numeric owner_id (negative for communities)."""
+    direct = os.environ.get("VK_OWNER_ID", "")
+    if direct:
+        return int(direct)
+    if not VK_TOKEN or not VK_COMMUNITY:
+        return 0
+    try:
+        resp = requests.get("https://api.vk.com/method/utils.resolveScreenName", params={
+            "screen_name": VK_COMMUNITY,
+            "access_token": VK_TOKEN,
+            "v": "5.199",
+        }, timeout=10)
+        obj = resp.json().get("response", {})
+        if obj.get("type") == "group":
+            return -int(obj["object_id"])
+        return int(obj.get("object_id", 0))
+    except Exception as e:
+        log.warning("VK resolve failed: %s", e)
+        return 0
+
+
+# ── keyboards ─────────────────────────────────────────────────────────────────
 
 def main_keyboard():
-    return ReplyKeyboardMarkup([[KeyboardButton(TASKS_BTN)]], resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(TASKS_BTN), KeyboardButton(PUBLISH_BTN)]],
+        resize_keyboard=True
+    )
 
 
 def format_keyboard():
@@ -103,6 +137,48 @@ def skip_ref_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("Пропустить", callback_data="ref:skip")]])
 
 
+def publish_platform_keyboard(selected: set):
+    options = []
+    if TELEGRAM_CHANNEL_ID:
+        options.append(("Telegram канал", "tg"))
+    if _vk_owner_id:
+        options.append(("VK", "vk"))
+    rows = []
+    for label, key in options:
+        icon = "✅ " if key in selected else ""
+        rows.append([InlineKeyboardButton(icon + label, callback_data=f"pub_plat:{key}")])
+    rows.append([InlineKeyboardButton("📤 Опубликовать", callback_data="pub_go")])
+    rows.append([InlineKeyboardButton("Отмена", callback_data="pub_cancel")])
+    return InlineKeyboardMarkup(rows)
+
+
+# ── VK / Telegram publish helpers ─────────────────────────────────────────────
+
+def publish_vk(text: str) -> str:
+    """Post to VK wall. Returns post URL or raises."""
+    resp = requests.post("https://api.vk.com/method/wall.post", data={
+        "owner_id":     _vk_owner_id,
+        "message":      text,
+        "access_token": VK_TOKEN,
+        "v":            "5.199",
+    }, timeout=15)
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("error_msg", str(data["error"])))
+    post_id = data["response"]["post_id"]
+    owner = abs(_vk_owner_id)
+    return f"https://vk.com/wall-{owner}_{post_id}"
+
+
+async def publish_telegram(bot, text: str) -> str:
+    """Post to Telegram channel. Returns link placeholder."""
+    msg = await bot.send_message(chat_id=int(TELEGRAM_CHANNEL_ID), text=text)
+    channel = TELEGRAM_CHANNEL_ID.replace("-100", "")
+    return f"https://t.me/c/{channel}/{msg.message_id}"
+
+
+# ── Notion helpers ─────────────────────────────────────────────────────────────
+
 def transcribe(path):
     with open(path, "rb") as f:
         result = groq_client.audio.transcriptions.create(
@@ -139,7 +215,6 @@ def push_to_notion(title, body, formats, platforms, themes=None, pub_date=None, 
         properties["Live Date"] = {"date": {"start": pub_date}}
     if reference:
         properties["Референс"] = {"url": reference}
-
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": properties,
@@ -170,8 +245,9 @@ def get_tasks_today():
     return data.get("results", [])
 
 
+# ── shared save logic ──────────────────────────────────────────────────────────
+
 async def _do_save(edit_fn, context):
-    """Pull all accumulated data from user_data and save to Notion."""
     title     = context.user_data.get("generated_title", "")
     body      = context.user_data.get("raw_idea", "")
     formats   = context.user_data.get("formats", [])
@@ -187,23 +263,28 @@ async def _do_save(edit_fn, context):
             None, push_to_notion, title, body, formats, platforms, themes, pub_date, reference
         )
         fmt_str = ", ".join(formats)
-        reply = f"✅ Сохранено!\n\n📌 {title}\nФормат: {fmt_str}"
+        reply = f"✅ Сохранено!
+
+📌 {title}
+Формат: {fmt_str}"
         if themes:
-            reply += f"\nТема: {', '.join(themes)}"
+            reply += f"
+Тема: {', '.join(themes)}"
         if pub_date:
-            reply += f"\nДата: {pub_date}"
+            reply += f"
+Дата: {pub_date}"
         if url:
-            reply += "\n\n" + url
+            reply += "
+
+" + url
         await edit_fn(reply)
     except Exception as e:
         await edit_fn("Ошибка Notion: " + str(e))
-
     context.user_data["state"] = None
     context.user_data["selected_themes"] = set()
 
 
 async def _init_idea(context, raw_idea: str) -> str:
-    """Store idea, generate AI title, reset per-idea state. Returns display text."""
     context.user_data["raw_idea"] = raw_idea
     context.user_data["selected_themes"] = set()
     context.user_data["state"] = None
@@ -220,7 +301,11 @@ async def _init_idea(context, raw_idea: str) -> str:
 
 async def cmd_start(update, context):
     await update.message.reply_text(
-        "Привет! Отправь идею для ролика:\n— голосовым сообщением\n— или текстом\n\nЯ сохраню её в Notion со статусом «Идея».",
+        "Привет! Отправь идею для ролика:
+— голосовым сообщением
+— или текстом
+
+Или нажми 📢 Публикация, чтобы опубликовать готовый пост.",
         reply_markup=main_keyboard()
     )
 
@@ -233,7 +318,8 @@ async def on_tasks_today(update, context):
         if not pages:
             await update.message.reply_text("На сегодня задач нет 🎉")
             return
-        lines = [f"📋 Задачи на сегодня ({date.today().strftime('%d.%m')}):\n"]
+        lines = [f"📋 Задачи на сегодня ({date.today().strftime('%d.%m')}):
+"]
         for page in pages:
             props = page.get("properties", {})
             title_parts = props.get("Video Title", {}).get("title", [])
@@ -243,11 +329,22 @@ async def on_tasks_today(update, context):
             url = page.get("url", "")
             line = f"• {title}"
             if status: line += f" [{status}]"
-            if url:    line += f"\n  {url}"
+            if url:    line += f"
+  {url}"
             lines.append(line)
-        await update.message.reply_text("\n\n".join(lines))
+        await update.message.reply_text("
+
+".join(lines))
     except Exception as e:
         await update.message.reply_text("Ошибка: " + str(e))
+
+
+async def on_publish_mode(update, context):
+    """User pressed 📢 Публикация — ask for content."""
+    context.user_data["state"] = "waiting_publish_content"
+    await update.message.reply_text(
+        "Отправь текст поста для публикации:"
+    )
 
 
 async def on_voice(update, context):
@@ -261,25 +358,49 @@ async def on_voice(update, context):
         text = await loop.run_in_executor(None, transcribe, path)
         os.unlink(path)
         gen_title = await _init_idea(context, text)
-        display = f"Транскрипция:\n\n{text}\n\n🤖 Название: {gen_title}\n\nВыбери формат контента:"
+        display = f"Транскрипция:
+
+{text}
+
+🤖 Название: {gen_title}
+
+Выбери формат контента:"
         await msg.edit_text(display, reply_markup=format_keyboard())
     except Exception as e:
         await msg.edit_text("Ошибка: " + str(e))
 
 
 async def on_text(update, context):
+    state = context.user_data.get("state")
+
     # Reference link arriving as plain text
-    if context.user_data.get("state") == "waiting_reference":
+    if state == "waiting_reference":
         context.user_data["reference"] = update.message.text
         context.user_data["state"] = None
         msg = await update.message.reply_text("...")
         await _do_save(msg.edit_text, context)
         return
 
+    # Content for cross-posting
+    if state == "waiting_publish_content":
+        context.user_data["publish_text"] = update.message.text
+        context.user_data["state"] = None
+        context.user_data["publish_platforms"] = set()
+        await update.message.reply_text(
+            "Выбери платформы для публикации:",
+            reply_markup=publish_platform_keyboard(set())
+        )
+        return
+
     # New idea
     raw = update.message.text
     gen_title = await _init_idea(context, raw)
-    display = f"💡 Идея:\n{raw}\n\n🤖 Название: {gen_title}\n\nВыбери формат контента:"
+    display = f"💡 Идея:
+{raw}
+
+🤖 Название: {gen_title}
+
+Выбери формат контента:"
     await update.message.reply_text(display, reply_markup=format_keyboard())
 
 
@@ -290,7 +411,9 @@ async def on_format(update, context):
     context.user_data["fmt"] = fmt
     if fmt in EXTRA_QUESTION:
         await query.edit_message_text(
-            f"Формат: {fmt}\n\n{EXTRA_QUESTION[fmt]}",
+            f"Формат: {fmt}
+
+{EXTRA_QUESTION[fmt]}",
             reply_markup=yes_no_keyboard(fmt)
         )
     else:
@@ -323,11 +446,9 @@ async def on_extra(update, context):
 async def on_theme(update, context):
     query = update.callback_query
     await query.answer()
-
     if query.data == "theme_done":
         await query.edit_message_text("Выбери дату публикации:", reply_markup=date_keyboard())
         return
-
     theme    = query.data[len("theme:"):]
     selected = context.user_data.get("selected_themes", set())
     if theme in selected:
@@ -358,17 +479,88 @@ async def on_ref_skip(update, context):
     await _do_save(query.edit_message_text, context)
 
 
+# ── crosspost handlers ─────────────────────────────────────────────────────────
+
+async def on_pub_plat(update, context):
+    """Toggle platform selection for cross-posting."""
+    query = update.callback_query
+    await query.answer()
+    key      = query.data[len("pub_plat:"):]
+    selected = context.user_data.get("publish_platforms", set())
+    if key in selected:
+        selected.discard(key)
+    else:
+        selected.add(key)
+    context.user_data["publish_platforms"] = selected
+    await query.edit_message_reply_markup(reply_markup=publish_platform_keyboard(selected))
+
+
+async def on_pub_go(update, context):
+    """Publish to selected platforms."""
+    query = update.callback_query
+    await query.answer()
+    selected  = context.user_data.get("publish_platforms", set())
+    text      = context.user_data.get("publish_text", "")
+    if not selected:
+        await query.answer("Выбери хотя бы одну платформу!", show_alert=True)
+        return
+
+    await query.edit_message_text("Публикую...")
+    results = []
+    loop = asyncio.get_event_loop()
+
+    if "vk" in selected and _vk_owner_id:
+        try:
+            url = await loop.run_in_executor(None, publish_vk, text)
+            results.append(f"✅ VK: {url}")
+        except Exception as e:
+            results.append(f"❌ VK: {e}")
+
+    if "tg" in selected and TELEGRAM_CHANNEL_ID:
+        try:
+            url = await publish_telegram(context.bot, text)
+            results.append(f"✅ Telegram: {url}")
+        except Exception as e:
+            results.append(f"❌ Telegram: {e}")
+
+    await query.edit_message_text("Готово!
+
+" + "
+".join(results))
+    context.user_data["publish_platforms"] = set()
+    context.user_data["state"] = None
+
+
+async def on_pub_cancel(update, context):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["publish_platforms"] = set()
+    context.user_data["state"] = None
+    await query.edit_message_text("Публикация отменена.")
+
+
 def main():
+    global _vk_owner_id
+    _vk_owner_id = _resolve_vk_owner()
+    if _vk_owner_id:
+        log.info("VK owner_id resolved: %s", _vk_owner_id)
+    else:
+        log.warning("VK owner_id not resolved — VK posting disabled")
+
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(MessageHandler(filters.Text([TASKS_BTN]), on_tasks_today))
-    app.add_handler(MessageHandler(filters.VOICE, on_voice))
+    app.add_handler(MessageHandler(filters.Text([TASKS_BTN]),   on_tasks_today))
+    app.add_handler(MessageHandler(filters.Text([PUBLISH_BTN]), on_publish_mode))
+    app.add_handler(MessageHandler(filters.VOICE,               on_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
-    app.add_handler(CallbackQueryHandler(on_format,   pattern=r"^fmt:"))
-    app.add_handler(CallbackQueryHandler(on_extra,    pattern=r"^extra:"))
-    app.add_handler(CallbackQueryHandler(on_theme,    pattern=r"^theme"))
-    app.add_handler(CallbackQueryHandler(on_date,     pattern=r"^date:"))
-    app.add_handler(CallbackQueryHandler(on_ref_skip, pattern=r"^ref:skip$"))
+    app.add_handler(CallbackQueryHandler(on_format,    pattern=r"^fmt:"))
+    app.add_handler(CallbackQueryHandler(on_extra,     pattern=r"^extra:"))
+    app.add_handler(CallbackQueryHandler(on_theme,     pattern=r"^theme"))
+    app.add_handler(CallbackQueryHandler(on_date,      pattern=r"^date:"))
+    app.add_handler(CallbackQueryHandler(on_ref_skip,  pattern=r"^ref:skip$"))
+    app.add_handler(CallbackQueryHandler(on_pub_plat,  pattern=r"^pub_plat:"))
+    app.add_handler(CallbackQueryHandler(on_pub_go,    pattern=r"^pub_go$"))
+    app.add_handler(CallbackQueryHandler(on_pub_cancel, pattern=r"^pub_cancel$"))
     log.info("Бот запущен...")
     app.run_polling(drop_pending_updates=True)
 
