@@ -241,8 +241,8 @@ def upload_photo_vk(path):
         timeout=15,
     )
     r1_data = r1.json()
-    if "error" in r1_data:
-        raise Exception(r1_data["error"].get("error_msg", str(r1_data["error"])))
+    if "error" in r1_data or "response" not in r1_data:
+        raise Exception(r1_data.get("error", {}).get("error_msg", f"VK: {r1_data}"))
     upload_url = r1_data["response"]["upload_url"]
     with open(path, "rb") as f:
         r2 = requests.post(upload_url, files={"photo": ("photo.jpg", f, "image/jpeg")}, timeout=60)
@@ -260,8 +260,8 @@ def upload_photo_vk(path):
         timeout=15,
     )
     r3_data = r3.json()
-    if "error" in r3_data:
-        raise Exception(r3_data["error"].get("error_msg", str(r3_data["error"])))
+    if "error" in r3_data or "response" not in r3_data:
+        raise Exception(r3_data.get("error", {}).get("error_msg", f"VK: {r3_data}"))
     info = r3_data["response"][0]
     return "photo" + str(info["owner_id"]) + "_" + str(info["id"])
 
@@ -273,10 +273,10 @@ def upload_video_vk(path):
         data={"wallpost": 1, "access_token": VK_TOKEN, "v": "5.199"},
         timeout=15,
     )
-    r1v_data = r1.json()
-    if "error" in r1v_data:
-        raise Exception(r1v_data["error"].get("error_msg", str(r1v_data["error"])))
-    d = r1v_data["response"]
+    r1v = r1.json()
+    if "error" in r1v or "response" not in r1v:
+        raise Exception(r1v.get("error", {}).get("error_msg", f"VK: {r1v}"))
+    d = r1v["response"]
     upload_url = d["upload_url"]
     video_id   = "video" + str(_vk_owner_id) + "_" + str(d["video_id"])
     with open(path, "rb") as f:
@@ -303,8 +303,14 @@ def publish_vk(text, attachment=None):
     return "https://vk.com/wall-" + str(owner) + "_" + str(post_id)
 
 
-async def publish_telegram(bot, text):
-    msg     = await bot.send_message(chat_id=int(TELEGRAM_CHANNEL_ID), text=text)
+async def publish_telegram(bot, text, media_fid=None, media_type=None):
+    ch = int(TELEGRAM_CHANNEL_ID)
+    if media_fid and media_type == "photo":
+        msg = await bot.send_photo(chat_id=ch, photo=media_fid, caption=text)
+    elif media_fid and media_type == "video":
+        msg = await bot.send_video(chat_id=ch, video=media_fid, caption=text)
+    else:
+        msg = await bot.send_message(chat_id=ch, text=text)
     channel = TELEGRAM_CHANNEL_ID.replace("-100", "")
     return "https://t.me/c/" + channel + "/" + str(msg.message_id)
 
@@ -921,7 +927,7 @@ async def on_pub_go(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if "tg" in selected and TELEGRAM_CHANNEL_ID:
         try:
-            url = await publish_telegram(context.bot, text)
+            url = await publish_telegram(context.bot, text, media_fid=media_fid, media_type=media_type)
             results.append("Telegram: " + url)
         except Exception as exc:
             results.append("Telegram ошибка: " + str(exc))
