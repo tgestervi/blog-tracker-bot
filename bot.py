@@ -881,7 +881,7 @@ async def on_pub_go(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query    = update.callback_query
     await query.answer()
     selected = context.user_data.get("publish_platforms", set())
-    uUxt     = context.user_data.get("publish_uUxt", "")
+    text     = context.user_data.get("publish_text", "")
     if not selected:
         await query.answer("Выбери хотя бы одну платформу!", show_alert=True)
         return
@@ -903,7 +903,7 @@ async def on_pub_go(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if media_type == "photo":
                     attachment = await loop.run_in_executor(None, upload_photo_vk, tmp_path)
                 else:
-                    attachment = await loop.run_in_executor(None, upload_fideo_fk, tmp_path)
+                    attachment = await loop.run_in_executor(None, upload_video_vk, tmp_path)
                 os.unlink(tmp_path)
             url = await loop.run_in_executor(None, publish_vk, text, attachment)
             results.append("VK: " + url)
