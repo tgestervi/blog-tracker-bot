@@ -702,7 +702,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         yd_link  = update.message.text.strip()
         page_id  = context.user_data.get("editor_page_id", "")
         page_ttl = context.user_data.get("editor_page_title", "")
-        if not yd_link,�tartswith("http"):
+        if not yd_link.startswith("http"):
             await update.message.reply_text(
                 "Пожалуйста, отправь корректную ссылку (начинается с http)."
             )
@@ -934,9 +934,7 @@ async def on_pub_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("Публикация отменена.")
 
 
-# ─── Main ───────────────────────────────────────────────────────────
-
-def m��───────
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     global _vk_owner_id
