@@ -267,7 +267,10 @@ def upload_video_vk(path):
         data={"wallpost": 1, "access_token": VK_TOKEN, "v": "5.199"},
         timeout=15,
     )
-    d = r1.json()["response"]
+    r1_data = r1.json()
+    if "error" in r1_data:
+        raise Exception(r1_data["error"].get("error_msg", str(r1_data["error"])))
+    d = r1_data["response"]
     upload_url = d["upload_url"]
     video_id   = "video" + str(_vk_owner_id) + "_" + str(d["video_id"])
     with open(path, "rb") as f:
@@ -295,7 +298,7 @@ def publish_vk(text, attachment=None):
 
 
 async def publish_telegram(bot, text):
-    msg     = await bot.send_message(capt_id=int(TELEGRAM_CHANNEL_ID), text=text)
+    msg     = await bot.send_message(chat_id=int(TELEGRAM_CHANNEL_ID), text=text)
     channel = TELEGRAM_CHANNEL_ID.replace("-100", "")
     return "https://t.me/c/" + channel + "/" + str(msg.message_id)
 
