@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-UGC Ideas Bot - golos/tekst -> Notion Blog Tracker + krosposting
+UGC Ideas Bot - голос/текст → Notion Blog Tracker + кросспостинг
 """
 
 import os
@@ -37,26 +37,26 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 logging.basicConfig(format="%(asctime)s  %(levelname)s  %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 
-TASKS_BTN   = "📋 Zadachi na segodnya"
-PUBLISH_BTN = "📢 Publikaciya"
+TASKS_BTN   = "📋 Задачи на сегодня"
+PUBLISH_BTN = "📢 Публикация"
 
 FORMAT_PLATFORMS = {
-    "Korotkiy rolik 9:16":   ["Instagram", "Tik-tok", "YouTube", "VK", "Dzen"],
-    "Dlinnoe video 16:9":    ["YouTube", "VK", "Dzen"],
-    "Tekstovyy post + foto": ["Instagram", "VK", "Telegram", "Dzen", "YouTube"],
-    "Infografika=karusel":   ["Instagram", "VK", "Pinterest", "Tik-tok", "Telegram"],
-    "Storis":                ["Instagram", "VK", "Telegram", "Tik-tok"],
+    "Короткий ролик 9:16":    ["Instagram", "Tik-tok", "YouTube", "VK", "Дзен"],
+    "Длинное видео 16:9":     ["YouTube", "VK", "Дзен"],
+    "Текстовый пост + фото":  ["Instagram", "VK", "Telegram", "Дзен", "YouTube"],
+    "Инфографика=карусель":   ["Instagram", "VK", "Pinterest", "Tik-tok", "Telegram"],
+    "Сторис":                 ["Instagram", "VK", "Telegram", "Tik-tok"],
 }
 
 EXTRA_QUESTION = {
-    "Dlinnoe video 16:9":    "V formate podkasta?",
-    "Korotkiy rolik 9:16":   "Zakrepit kak khaylayts?",
-    "Tekstovyy post + foto": "Zakrepit kak khaylayts?",
-    "Infografika=karusel":   "Zakrepit kak khaylayts?",
-    "Storis":                "Zakrepit kak khaylayts?",
+    "Длинное видео 16:9":    "В формате подкаста?",
+    "Короткий ролик 9:16":   "Закрепить как хайлайтс?",
+    "Текстовый пост + фото": "Закрепить как хайлайтс?",
+    "Инфографика=карусель":  "Закрепить как хайлайтс?",
+    "Сторис":                "Закрепить как хайлайтс?",
 }
 
-THEMES = ["Ekspertnyy", "Lichnyy", "Razvlekatelnyy"]
+THEMES = ["Экспертный", "Личный", "Развлекательный"]
 
 _vk_owner_id: int = 0
 
@@ -91,18 +91,18 @@ def main_keyboard():
 
 def format_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Korotkiy rolik 9:16",   callback_data="fmt:Korotkiy rolik 9:16")],
-        [InlineKeyboardButton("Dlinnoe video 16:9",    callback_data="fmt:Dlinnoe video 16:9")],
-        [InlineKeyboardButton("Tekstovyy post + foto", callback_data="fmt:Tekstovyy post + foto")],
-        [InlineKeyboardButton("Infografika=karusel",   callback_data="fmt:Infografika=karusel")],
-        [InlineKeyboardButton("Storis",                callback_data="fmt:Storis")],
+        [InlineKeyboardButton("Короткий ролик 9:16",   callback_data="fmt:Короткий ролик 9:16")],
+        [InlineKeyboardButton("Длинное видео 16:9",    callback_data="fmt:Длинное видео 16:9")],
+        [InlineKeyboardButton("Текстовый пост + фото", callback_data="fmt:Текстовый пост + фото")],
+        [InlineKeyboardButton("Инфографика=карусель",  callback_data="fmt:Инфографика=карусель")],
+        [InlineKeyboardButton("Сторис",                callback_data="fmt:Сторис")],
     ])
 
 
 def yes_no_keyboard(fmt):
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("Da",  callback_data="extra:yes:" + fmt),
-        InlineKeyboardButton("Net", callback_data="extra:no:"  + fmt),
+        InlineKeyboardButton("Да",  callback_data="extra:yes:" + fmt),
+        InlineKeyboardButton("Нет", callback_data="extra:no:"  + fmt),
     ]])
 
 
@@ -111,7 +111,7 @@ def theme_keyboard(selected):
     for t in THEMES:
         label = ("[+] " if t in selected else "") + t
         rows.append([InlineKeyboardButton(label, callback_data="theme:" + t)])
-    rows.append([InlineKeyboardButton("Dalee ->", callback_data="theme_done")])
+    rows.append([InlineKeyboardButton("Далее →", callback_data="theme_done")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -119,51 +119,91 @@ def date_keyboard():
     today = date.today()
     rows = [
         [
-            InlineKeyboardButton("Segodnya", callback_data="date:" + today.isoformat()),
-            InlineKeyboardButton("Zavtra",   callback_data="date:" + (today + timedelta(1)).isoformat()),
+            InlineKeyboardButton("Сегодня", callback_data="date:" + today.isoformat()),
+            InlineKeyboardButton("Завтра",  callback_data="date:" + (today + timedelta(1)).isoformat()),
         ],
         [
-            InlineKeyboardButton("+2 dnya",  callback_data="date:" + (today + timedelta(2)).isoformat()),
-            InlineKeyboardButton("+3 dnya",  callback_data="date:" + (today + timedelta(3)).isoformat()),
-            InlineKeyboardButton("+7 dney",  callback_data="date:" + (today + timedelta(7)).isoformat()),
+            InlineKeyboardButton("+2 дня",  callback_data="date:" + (today + timedelta(2)).isoformat()),
+            InlineKeyboardButton("+3 дня",  callback_data="date:" + (today + timedelta(3)).isoformat()),
+            InlineKeyboardButton("+7 дней", callback_data="date:" + (today + timedelta(7)).isoformat()),
         ],
-        [InlineKeyboardButton("Propustit", callback_data="date:skip")],
+        [InlineKeyboardButton("Пропустить", callback_data="date:skip")],
     ]
     return InlineKeyboardMarkup(rows)
 
 
 def skip_ref_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("Propustit", callback_data="ref:skip")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Пропустить", callback_data="ref:skip")]])
 
 
 def publish_platform_keyboard(selected):
     rows = []
     if TELEGRAM_CHANNEL_ID:
         icon = "[+] " if "tg" in selected else ""
-        rows.append([InlineKeyboardButton(icon + "Telegram kanal", callback_data="pub_plat:tg")])
+        rows.append([InlineKeyboardButton(icon + "Telegram канал", callback_data="pub_plat:tg")])
     if _vk_owner_id:
         icon = "[+] " if "vk" in selected else ""
         rows.append([InlineKeyboardButton(icon + "VK", callback_data="pub_plat:vk")])
-    rows.append([InlineKeyboardButton("Opublikovat", callback_data="pub_go")])
-    rows.append([InlineKeyboardButton("Otmena",      callback_data="pub_cancel")])
+    rows.append([InlineKeyboardButton("Опубликовать", callback_data="pub_go")])
+    rows.append([InlineKeyboardButton("Отмена",       callback_data="pub_cancel")])
     return InlineKeyboardMarkup(rows)
 
-
-def publish_vk(text):
-    resp = requests.post(
-        "https://api.vk.com/method/wall.post",
+def upload_photo_vk(path):
+    r1 = requests.get(
+        "https://api.vk.com/method/photos.getWallUploadServer",
+        params={"owner_id": _vk_owner_id, "access_token": VK_TOKEN, "v": "5.199"},
+        timeout=15,
+    )
+    upload_url = r1.json()["response"]["upload_url"]
+    with open(path, "rb") as f:
+        r2 = requests.post(upload_url, files={"photo": ("photo.jpg", f, "image/jpeg")}, timeout=60)
+    d = r2.json()
+    r3 = requests.post(
+        "https://api.vk.com/method/photos.saveWallPhoto",
         data={
             "owner_id":     _vk_owner_id,
-            "message":      text,
+            "server":       d["server"],
+            "photo":        d["photo"],
+            "hash":         d["hash"],
             "access_token": VK_TOKEN,
             "v":            "5.199",
         },
         timeout=15,
     )
-    data = resp.json()
-    if "error" in data:
-        raise Exception(data["error"].get("error_msg", str(data["error"])))
-    post_id = data["response"]["post_id"]
+    info = r3.json()["response"][0]
+    return "photo" + str(info["owner_id"]) + "_" + str(info["id"])
+
+
+def upload_video_vk(path):
+    import time
+    r1 = requests.post(
+        "https://api.vk.com/method/video.save",
+        data={"wallpost": 1, "access_token": VK_TOKEN, "v": "5.199"},
+        timeout=15,
+    )
+    d = r1.json()["response"]
+    upload_url = d["upload_url"]
+    video_id   = "video" + str(_vk_owner_id) + "_" + str(d["video_id"])
+    with open(path, "rb") as f:
+        requests.post(upload_url, files={"video_file": ("video.mp4", f, "video/mp4")}, timeout=300)
+    time.sleep(3)
+    return video_id
+
+
+def publish_vk(text, attachment=None):
+    data = {
+        "owner_id":     _vk_owner_id,
+        "message":      text,
+        "access_token": VK_TOKEN,
+        "v":            "5.199",
+    }
+    if attachment:
+        data["attachments"] = attachment
+    resp = requests.post("https://api.vk.com/method/wall.post", data=data, timeout=30)
+    d = resp.json()
+    if "error" in d:
+        raise Exception(d["error"].get("error_msg", str(d["error"])))
+    post_id = d["response"]["post_id"]
     owner   = abs(_vk_owner_id)
     return "https://vk.com/wall-" + str(owner) + "_" + str(post_id)
 
@@ -192,9 +232,9 @@ def generate_title(idea_text):
             {
                 "role": "system",
                 "content": (
-                    "Ty pomoshchnik kontent-meykera. Pridumay korotkoe tsepyayushchee "
-                    "nazvanie video do 60 simvolov na osnove idei. "
-                    "Otvechay TOLKO nazvaniem, bez kavychek i obyasneniy."
+                    "Ты помощник контент-мейкера. Придумай короткое цепляющее "
+                    "название видео до 60 символов на основе идеи. "
+                    "Отвечай ТОЛЬКО названием, без кавычек и объяснений."
                 ),
             },
             {"role": "user", "content": idea_text},
@@ -212,7 +252,7 @@ def push_to_notion(title, body, formats, platforms, themes=None, pub_date=None, 
     }
     properties = {
         "Video Title": {"title": [{"text": {"content": title[:2000]}}]},
-        "Format":      {"multi_select": [{"name": f} for f in formats]},
+        "Формат":      {"multi_select": [{"name": f} for f in formats]},
         "Platform":    {"multi_select": [{"name": p} for p in platforms]},
         "Status":      {"select": {"name": "Idea"}},
     }
@@ -221,7 +261,7 @@ def push_to_notion(title, body, formats, platforms, themes=None, pub_date=None, 
     if pub_date:
         properties["Live Date"] = {"date": {"start": pub_date}}
     if reference:
-        properties["Referens"] = {"url": reference}
+        properties["Референс"] = {"url": reference}
     payload = {
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": properties,
@@ -273,22 +313,22 @@ async def _do_save(edit_fn, context):
     pub_date  = context.user_data.get("pub_date")
     reference = context.user_data.get("reference")
 
-    await edit_fn("Sokhraniayu v Notion...")
+    await edit_fn("Сохраняю в Notion...")
     loop = asyncio.get_event_loop()
     try:
         url   = await loop.run_in_executor(
             None, push_to_notion, title, body, formats, platforms, themes, pub_date, reference
         )
-        parts = ["Sokhraneno!", "", "Nazvanie: " + title, "Format: " + ", ".join(formats)]
+        parts = ["Сохранено!", "", "Название: " + title, "Формат: " + ", ".join(formats)]
         if themes:
-            parts.append("Tema: " + ", ".join(themes))
+            parts.append("Тема: " + ", ".join(themes))
         if pub_date:
-            parts.append("Data: " + pub_date)
+            parts.append("Дата: " + pub_date)
         if url:
             parts.extend(["", url])
         await edit_fn("\n".join(parts))
     except Exception as exc:
-        await edit_fn("Oshibka Notion: " + str(exc))
+        await edit_fn("Ошибка Notion: " + str(exc))
 
     context.user_data["state"]           = None
     context.user_data["selected_themes"] = set()
@@ -308,25 +348,31 @@ async def _init_idea(context, raw_idea):
 
 
 async def cmd_start(update, context):
+    context.user_data.clear()
     await update.message.reply_text(
-        "Privet! Otprav ideyu dlya rolika golosom ili tekstom.\n\nIli nazhmи Publikaciya.",
+        "Привет! Отправь идею для ролика голосом или текстом.\n\nИли нажми Публикация.",
         reply_markup=main_keyboard(),
     )
 
 
+async def cmd_cancel(update, context):
+    context.user_data.clear()
+    await update.message.reply_text("Отменено. Отправь идею или нажми Публикация.", reply_markup=main_keyboard())
+
+
 async def on_tasks_today(update, context):
-    await update.message.reply_text("Zagruzhayu zadachi...")
+    await update.message.reply_text("Загружаю задачи...")
     try:
         loop  = asyncio.get_event_loop()
         pages = await loop.run_in_executor(None, get_tasks_today)
         if not pages:
-            await update.message.reply_text("Na segodnya zadach net!")
+            await update.message.reply_text("На сегодня задач нет!")
             return
-        lines = ["Zadachi na segodnya (" + date.today().strftime("%d.%m") + "):", ""]
+        lines = ["Задачи на сегодня (" + date.today().strftime("%d.%m") + "):", ""]
         for page in pages:
             props       = page.get("properties", {})
             title_parts = props.get("Video Title", {}).get("title", [])
-            title       = "".join(t.get("plain_text", "") for t in title_parts) or "Bez nazvaniya"
+            title       = "".join(t.get("plain_text", "") for t in title_parts) or "Без названия"
             status_obj  = props.get("Status", {}).get("select") or {}
             status      = status_obj.get("name", "")
             url         = page.get("url", "")
@@ -338,16 +384,38 @@ async def on_tasks_today(update, context):
             lines.append(line)
         await update.message.reply_text("\n".join(lines))
     except Exception as exc:
-        await update.message.reply_text("Oshibka: " + str(exc))
+        await update.message.reply_text("Ошибка: " + str(exc))
 
 
 async def on_publish_mode(update, context):
-    context.user_data["state"] = "waiting_publish_content"
-    await update.message.reply_text("Otprav tekst posta dlya publikacii:")
+    context.user_data["state"]              = "waiting_publish_content"
+    context.user_data["publish_media_fid"]  = None
+    context.user_data["publish_media_type"] = None
+    await update.message.reply_text("Отправь текст поста (можно с фото или видео):")
+
+
+async def on_media_publish(update, context):
+    if context.user_data.get("state") != "waiting_publish_content":
+        return
+    msg = update.message
+    caption = msg.caption or ""
+    if msg.photo:
+        context.user_data["publish_media_fid"]  = msg.photo[-1].file_id
+        context.user_data["publish_media_type"] = "photo"
+    elif msg.video:
+        context.user_data["publish_media_fid"]  = msg.video.file_id
+        context.user_data["publish_media_type"] = "video"
+    context.user_data["publish_text"]      = caption
+    context.user_data["state"]             = None
+    context.user_data["publish_platforms"] = set()
+    await update.message.reply_text(
+        "Выбери платформы для публикации:",
+        reply_markup=publish_platform_keyboard(set()),
+    )
 
 
 async def on_voice(update, context):
-    msg = await update.message.reply_text("Transkribuyu...")
+    msg = await update.message.reply_text("Транскрибирую...")
     try:
         voice_file = await context.bot.get_file(update.message.voice.file_id)
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
@@ -357,10 +425,10 @@ async def on_voice(update, context):
         text      = await loop.run_in_executor(None, transcribe, path)
         os.unlink(path)
         gen_title = await _init_idea(context, text)
-        display   = "Transkripciya:\n\n" + text + "\n\nNazvanie: " + gen_title + "\n\nVyberi format kontenta:"
+        display   = "Транскрипция:\n\n" + text + "\n\nНазвание: " + gen_title + "\n\nВыбери формат контента:"
         await msg.edit_text(display, reply_markup=format_keyboard())
     except Exception as exc:
-        await msg.edit_text("Oshibka: " + str(exc))
+        await msg.edit_text("Ошибка: " + str(exc))
 
 
 async def on_text(update, context):
@@ -378,14 +446,14 @@ async def on_text(update, context):
         context.user_data["state"]             = None
         context.user_data["publish_platforms"] = set()
         await update.message.reply_text(
-            "Vyberi platformyi dlya publikacii:",
+            "Выбери платформы для публикации:",
             reply_markup=publish_platform_keyboard(set()),
         )
         return
 
     raw       = update.message.text
     gen_title = await _init_idea(context, raw)
-    display   = "Ideya:\n" + raw + "\n\nNazvanie: " + gen_title + "\n\nVyberi format kontenta:"
+    display   = "Идея:\n" + raw + "\n\nНазвание: " + gen_title + "\n\nВыбери формат контента:"
     await update.message.reply_text(display, reply_markup=format_keyboard())
 
 
@@ -396,14 +464,14 @@ async def on_format(update, context):
     context.user_data["fmt"] = fmt
     if fmt in EXTRA_QUESTION:
         await query.edit_message_text(
-            "Format: " + fmt + "\n\n" + EXTRA_QUESTION[fmt],
+            "Формат: " + fmt + "\n\n" + EXTRA_QUESTION[fmt],
             reply_markup=yes_no_keyboard(fmt),
         )
     else:
         context.user_data["formats"]   = [fmt]
         context.user_data["platforms"] = list(FORMAT_PLATFORMS.get(fmt, []))
         selected = context.user_data.get("selected_themes", set())
-        await query.edit_message_text("Vyberi temu (mozhno neskolko):", reply_markup=theme_keyboard(selected))
+        await query.edit_message_text("Выбери тему (можно несколько):", reply_markup=theme_keyboard(selected))
 
 
 async def on_extra(update, context):
@@ -415,23 +483,23 @@ async def on_extra(update, context):
     platforms = list(FORMAT_PLATFORMS.get(fmt, []))
     formats   = [fmt]
     if answer == "yes":
-        if fmt == "Dlinnoe video 16:9":
-            formats.append("Podkast")
+        if fmt == "Длинное видео 16:9":
+            formats.append("Подкаст")
             if "Mave" not in platforms:
                 platforms.append("Mave")
         else:
-            formats.append("Khaylayts")
+            formats.append("Хайлайтс")
     context.user_data["formats"]   = formats
     context.user_data["platforms"] = platforms
     selected = context.user_data.get("selected_themes", set())
-    await query.edit_message_text("Vyberi temu (mozhno neskolko):", reply_markup=theme_keyboard(selected))
+    await query.edit_message_text("Выбери тему (можно несколько):", reply_markup=theme_keyboard(selected))
 
 
 async def on_theme(update, context):
     query = update.callback_query
     await query.answer()
     if query.data == "theme_done":
-        await query.edit_message_text("Vyberi datu publikacii:", reply_markup=date_keyboard())
+        await query.edit_message_text("Выбери дату публикации:", reply_markup=date_keyboard())
         return
     theme    = query.data[6:]
     selected = context.user_data.get("selected_themes", set())
@@ -450,7 +518,7 @@ async def on_date(update, context):
     context.user_data["pub_date"] = None if val == "skip" else val
     context.user_data["state"]    = "waiting_reference"
     await query.edit_message_text(
-        "Otprav ssylku na referens ili propusti:",
+        "Отправь ссылку на референс или пропусти:",
         reply_markup=skip_ref_keyboard(),
     )
 
@@ -482,34 +550,53 @@ async def on_pub_go(update, context):
     selected = context.user_data.get("publish_platforms", set())
     text     = context.user_data.get("publish_text", "")
     if not selected:
-        await query.answer("Vyberi khotya by odnu platformu!", show_alert=True)
+        await query.answer("Выбери хотя бы одну платформу!", show_alert=True)
         return
-    await query.edit_message_text("Publikuyu...")
-    results = []
-    loop    = asyncio.get_event_loop()
+    await query.edit_message_text("Публикую...")
+    results      = []
+    loop         = asyncio.get_event_loop()
+    media_fid    = context.user_data.get("publish_media_fid")
+    media_type   = context.user_data.get("publish_media_type")
+
     if "vk" in selected and _vk_owner_id:
         try:
-            url = await loop.run_in_executor(None, publish_vk, text)
+            attachment = None
+            if media_fid and media_type:
+                tg_file = await context.bot.get_file(media_fid)
+                suffix  = ".jpg" if media_type == "photo" else ".mp4"
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    await tg_file.download_to_drive(tmp.name)
+                    tmp_path = tmp.name
+                if media_type == "photo":
+                    attachment = await loop.run_in_executor(None, upload_photo_vk, tmp_path)
+                else:
+                    attachment = await loop.run_in_executor(None, upload_video_vk, tmp_path)
+                os.unlink(tmp_path)
+            url = await loop.run_in_executor(None, publish_vk, text, attachment)
             results.append("VK: " + url)
         except Exception as exc:
-            results.append("VK oshibka: " + str(exc))
+            results.append("VK ошибка: " + str(exc))
     if "tg" in selected and TELEGRAM_CHANNEL_ID:
         try:
             url = await publish_telegram(context.bot, text)
             results.append("Telegram: " + url)
         except Exception as exc:
-            results.append("Telegram oshibka: " + str(exc))
-    await query.edit_message_text("Gotovo!\n\n" + "\n".join(results))
-    context.user_data["publish_platforms"] = set()
-    context.user_data["state"]             = None
+            results.append("Telegram ошибка: " + str(exc))
+    await query.edit_message_text("Готово!\n\n" + "\n".join(results))
+    context.user_data["publish_platforms"]  = set()
+    context.user_data["publish_media_fid"]  = None
+    context.user_data["publish_media_type"] = None
+    context.user_data["state"]              = None
 
 
 async def on_pub_cancel(update, context):
     query = update.callback_query
     await query.answer()
-    context.user_data["publish_platforms"] = set()
-    context.user_data["state"]             = None
-    await query.edit_message_text("Publikaciya otmenena.")
+    context.user_data["publish_platforms"]  = set()
+    context.user_data["publish_media_fid"]  = None
+    context.user_data["publish_media_type"] = None
+    context.user_data["state"]              = None
+    await query.edit_message_text("Публикация отменена.")
 
 
 def main():
@@ -518,11 +605,13 @@ def main():
     log.info("VK owner_id: %s", _vk_owner_id)
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(MessageHandler(filters.Text([TASKS_BTN]),       on_tasks_today))
-    app.add_handler(MessageHandler(filters.Text([PUBLISH_BTN]),     on_publish_mode))
-    app.add_handler(MessageHandler(filters.VOICE,                   on_voice))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(MessageHandler(filters.Text([TASKS_BTN]),                     on_tasks_today))
+    app.add_handler(MessageHandler(filters.Text([PUBLISH_BTN]),                   on_publish_mode))
+    app.add_handler(MessageHandler(filters.VOICE,                                 on_voice))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO,                 on_media_publish))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,               on_text))
     app.add_handler(CallbackQueryHandler(on_format,     pattern=r"^fmt:"))
     app.add_handler(CallbackQueryHandler(on_extra,      pattern=r"^extra:"))
     app.add_handler(CallbackQueryHandler(on_theme,      pattern=r"^theme"))
@@ -531,7 +620,7 @@ def main():
     app.add_handler(CallbackQueryHandler(on_pub_plat,   pattern=r"^pub_plat:"))
     app.add_handler(CallbackQueryHandler(on_pub_go,     pattern=r"^pub_go$"))
     app.add_handler(CallbackQueryHandler(on_pub_cancel, pattern=r"^pub_cancel$"))
-    log.info("Bot zapushchen...")
+    log.info("Бот запущен...")
     app.run_polling(drop_pending_updates=True)
 
 
