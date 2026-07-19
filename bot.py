@@ -240,7 +240,10 @@ def upload_photo_vk(path):
         params={"owner_id": _vk_owner_id, "access_token": VK_TOKEN, "v": "5.199"},
         timeout=15,
     )
-    upload_url = r1.json()["response"]["upload_url"]
+    r1_data = r1.json()
+    if "error" in r1_data:
+        raise Exception(r1_data["error"].get("error_msg", str(r1_data["error"])))
+    upload_url = r1_data["response"]["upload_url"]
     with open(path, "rb") as f:
         r2 = requests.post(upload_url, files={"photo": ("photo.jpg", f, "image/jpeg")}, timeout=60)
     d = r2.json()
@@ -256,7 +259,10 @@ def upload_photo_vk(path):
         },
         timeout=15,
     )
-    info = r3.json()["response"][0]
+    r3_data = r3.json()
+    if "error" in r3_data:
+        raise Exception(r3_data["error"].get("error_msg", str(r3_data["error"])))
+    info = r3_data["response"][0]
     return "photo" + str(info["owner_id"]) + "_" + str(info["id"])
 
 
@@ -267,10 +273,10 @@ def upload_video_vk(path):
         data={"wallpost": 1, "access_token": VK_TOKEN, "v": "5.199"},
         timeout=15,
     )
-    r1_data = r1.json()
-    if "error" in r1_data:
-        raise Exception(r1_data["error"].get("error_msg", str(r1_data["error"])))
-    d = r1_data["response"]
+    r1v_data = r1.json()
+    if "error" in r1v_data:
+        raise Exception(r1v_data["error"].get("error_msg", str(r1v_data["error"])))
+    d = r1v_data["response"]
     upload_url = d["upload_url"]
     video_id   = "video" + str(_vk_owner_id) + "_" + str(d["video_id"])
     with open(path, "rb") as f:
