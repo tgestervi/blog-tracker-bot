@@ -819,7 +819,7 @@ async def on_extra(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if "Mave" not in platforms:
                 platforms.append("Mave")
         else:
-            for-ats.append("Хайлайтс")
+            formats.append("Хайлайтс")
     context.user_data["formats"]   = formats
     context.user_data["platforms"] = platforms
     selected = context.user_data.get("selected_themes", set())
